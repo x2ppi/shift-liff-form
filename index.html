@@ -178,6 +178,17 @@
       background: #fff7f6;
     }
 
+    .calendar-day.locked {
+      border-color: #dde1e7;
+      background: #f1f3f4;
+      color: #7b8087;
+      cursor: not-allowed;
+    }
+
+    .calendar-day.locked.has-value {
+      background: #eef1f3;
+    }
+
     .date-number {
       display: block;
       font-size: 14px;
@@ -237,6 +248,21 @@
     .date-value.invalid {
       background: #fce8e6;
       color: #c5221f;
+    }
+
+    .date-value.locked {
+      background: #e1e5ea;
+      color: #5f6368;
+    }
+
+    .date-lock {
+      display: block;
+      margin-top: 2px;
+      color: #7b8087;
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1;
+      text-align: center;
     }
 
     .calendar-blank {
@@ -561,12 +587,54 @@
       handleMonthChange();
     }
 
-    function handleMonthChange() {
+    async function handleMonthChange() {
       requestsByDate.clear();
       selectedDate = '';
       closeEditPanel();
+      messageEl.textContent = '保存済みデータを確認しています...';
+      renderCalendar();
+      await loadSavedRequests();
       messageEl.textContent = '';
       renderCalendar();
+    }
+
+    async function loadSavedRequests() {
+      const targetMonth = monthInput.value;
+      if (!targetMonth) return;
+
+      try {
+        const result = await postBackend({
+          action: 'loadRequests',
+          targetMonth
+        });
+
+        (result.requests || []).forEach(item => {
+          const request = normalizeLoadedRequest(item);
+          if (request) {
+            requestsByDate.set(request.date, request);
+          }
+        });
+      } catch (error) {
+        messageEl.textContent = error.message || String(error);
+      }
+    }
+
+    function normalizeLoadedRequest(item) {
+      if (!item || !item.date || !item.type) return null;
+      const type = item.type;
+      if (type !== 'work' && type !== 'off') return null;
+      const start = type === 'work' ? String(item.start || '') : '';
+      const end = type === 'work' ? String(item.end || '') : '';
+      const up = type === 'work' && (item.up === true || item.up === 'true');
+      return {
+        date: item.date,
+        weekday: item.weekday || weekdayForDate(item.date),
+        type,
+        start,
+        end,
+        up,
+        displayValue: buildDisplayValue(type, start, end, up)
+      };
     }
 
     function renderCalendar() {
@@ -612,7 +680,12 @@
       button.dataset.day = String(day);
       button.dataset.weekdayIndex = String(weekdayIndex);
       button.setAttribute('aria-label', `${day}日（${weekday}）の希望を入力`);
-      button.addEventListener('click', () => openEditPanel(dateValue));
+      if (isDateLocked(dateValue)) {
+        button.disabled = true;
+        button.setAttribute('aria-label', `${day}日（${weekday}）は締切済みです`);
+      } else {
+        button.addEventListener('click', () => openEditPanel(dateValue));
+      }
       updateCalendarDay(button);
       return button;
     }
@@ -683,6 +756,7 @@
 
     function updateCalendarDay(button) {
       const request = requestsByDate.get(button.dataset.date);
+      const locked = isDateLocked(button.dataset.date);
       const weekdayIndex = Number(button.dataset.weekdayIndex);
       const dateClass = weekdayIndex === 0 ? 'sun' : weekdayIndex === 6 ? 'sat' : '';
       const valueClass = request ? valueStatusClass(request) : '';
@@ -690,10 +764,12 @@
 
       button.classList.toggle('selected', button.dataset.date === selectedDate);
       button.classList.toggle('has-value', Boolean(request));
+      button.classList.toggle('locked', locked);
       button.classList.toggle('invalid', Boolean(request && isInvalidRequest(request)));
       button.innerHTML = `
         <span class="date-number ${dateClass}">${button.dataset.day}</span>
-        <span class="date-value ${valueClass} ${request ? '' : 'hidden'}">${valueHtml}</span>
+        <span class="date-value ${valueClass} ${locked ? 'locked' : ''} ${request ? '' : 'hidden'}">${valueHtml}</span>
+        <span class="date-lock ${locked ? '' : 'hidden'}">締切済</span>
       `;
     }
 
@@ -756,8 +832,35 @@
 
     function collectRequests() {
       return Array.from(requestsByDate.values())
+        .filter(item => !isDateLocked(item.date))
         .sort((a, b) => a.date.localeCompare(b.date))
         .map(item => ({ ...item }));
+    }
+
+    function isDateLocked(dateValue) {
+      const deadline = getWeekDeadline(dateValue);
+      if (!deadline) return false;
+      return Date.now() > deadline.getTime();
+    }
+
+    function getWeekDeadline(dateValue) {
+      const parts = String(dateValue || '').split('-').map(Number);
+      if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return null;
+      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+      const daysFromMonday = (date.getDay() + 6) % 7;
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - daysFromMonday);
+
+      const deadline = new Date(weekStart);
+      deadline.setDate(weekStart.getDate() - 3);
+      deadline.setHours(23, 59, 59, 999);
+      return deadline;
+    }
+
+    function weekdayForDate(dateValue) {
+      const parts = String(dateValue || '').split('-').map(Number);
+      if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return '';
+      return WEEKDAYS[new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
     }
 
     function postBackend(fields) {
