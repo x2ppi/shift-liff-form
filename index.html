@@ -224,14 +224,35 @@
       white-space: nowrap;
     }
 
-    .date-value-time,
-    .date-value-up {
-      display: inline-block;
+    .date-value.has-up {
+      flex-direction: column;
+      gap: 0;
+      min-height: 27px;
+      border-radius: 8px;
+      overflow: visible;
+      padding: 2px 1px;
+    }
+
+    .date-value-time {
+      display: block;
+      max-width: 100%;
       min-width: 0;
+      overflow: visible;
+      line-height: 1.05;
+      text-align: center;
+    }
+
+    .date-value.long-time .date-value-time {
+      font-size: 8px;
     }
 
     .date-value-up {
-      font-size: 8px;
+      display: inline-block;
+      min-width: 0;
+      border-radius: 999px;
+      padding: 0 3px;
+      background: rgba(6, 199, 85, 0.14);
+      font-size: 7px;
       line-height: 1;
     }
 
@@ -334,6 +355,46 @@
       white-space: nowrap;
     }
 
+    .success-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(32, 33, 36, 0.28);
+    }
+
+    .success-box {
+      width: min(320px, 100%);
+      border-radius: 10px;
+      padding: 22px 18px 18px;
+      background: #fff;
+      box-shadow: 0 12px 30px rgba(32, 33, 36, 0.22);
+      text-align: center;
+    }
+
+    .success-title {
+      margin: 0;
+      color: var(--line);
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .success-text {
+      margin: 10px 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .success-button {
+      margin-top: 0;
+      padding: 9px 12px;
+    }
+
     @media (max-width: 420px) {
       main {
         padding: 8px 6px 24px;
@@ -392,8 +453,16 @@
         font-size: 9px;
       }
 
+      .date-value.has-up {
+        min-height: 25px;
+      }
+
+      .date-value.long-time .date-value-time {
+        font-size: 7.5px;
+      }
+
       .date-value-up {
-        font-size: 7px;
+        font-size: 6.5px;
       }
     }
 
@@ -468,6 +537,14 @@
     <iframe name="submitFrame" title="送信用フレーム"></iframe>
   </main>
 
+  <div id="successModal" class="success-modal hidden" role="dialog" aria-modal="true" aria-labelledby="successTitle">
+    <div class="success-box">
+      <h2 id="successTitle" class="success-title">送信しました</h2>
+      <p class="success-text">入力内容を保存しました。</p>
+      <button id="successOkButton" class="success-button" type="button">OK</button>
+    </div>
+  </div>
+
   <script>
     const LIFF_ID = '2010088240-Yn2hGGRq';
     const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyYhLBYCG7jCgJJCjQ2M_fqxmfjR1W64u1My7o7gDClhElzTudUpWngYt0P4TtWLry8yQ/exec';
@@ -480,6 +557,7 @@
     let requestSeq = 0;
     let selectedDate = '';
     let isLoadingRequests = false;
+    let successModalTimer = 0;
     const pendingRequests = new Map();
     const requestsByDate = new Map();
 
@@ -490,6 +568,7 @@
     const daysEl = document.getElementById('days');
     const submitPanel = document.getElementById('submitPanel');
     const messageEl = document.getElementById('message');
+    const successModal = document.getElementById('successModal');
     const monthInput = document.getElementById('targetMonth');
     const editPanel = document.getElementById('editPanel');
     const editTitle = document.getElementById('editTitle');
@@ -502,6 +581,7 @@
     document.getElementById('registerButton').addEventListener('click', registerStaff);
     document.getElementById('submitButton').addEventListener('click', submitRequests);
     document.getElementById('closeEditButton').addEventListener('click', closeEditPanel);
+    document.getElementById('successOkButton').addEventListener('click', hideSuccessModal);
     monthInput.addEventListener('change', handleMonthChange);
     editType.addEventListener('change', applyEditPanelChange);
     editStart.addEventListener('change', applyEditPanelChange);
@@ -783,16 +863,23 @@
     }
 
     function buildCalendarValueHtml(request) {
-      if (request.type === 'work' && request.up) {
+      if (request.type === 'work') {
         const timeValue = `${request.start}~${request.end}`;
-        return `<span class="date-value-time">${timeValue}</span><span class="date-value-up">UP</span>`;
+        const upValue = request.up ? '<span class="date-value-up">UP</span>' : '';
+        return `<span class="date-value-time">${timeValue}</span>${upValue}`;
       }
       return request.displayValue;
     }
 
     function valueStatusClass(request) {
       if (isInvalidRequest(request)) return 'invalid';
-      if (request.type === 'work') return 'work';
+      if (request.type === 'work') {
+        const classes = ['work'];
+        const timeValue = `${request.start}~${request.end}`;
+        if (request.up) classes.push('has-up');
+        if (timeValue.length >= 8) classes.push('long-time');
+        return classes.join(' ');
+      }
       if (request.type === 'off') return 'off';
       return '';
     }
@@ -853,11 +940,23 @@
           requestsJson: JSON.stringify(requests)
         });
         messageEl.textContent = '送信しました。';
+        showSuccessModal();
       } catch (error) {
         messageEl.textContent = error.message || String(error);
       } finally {
         setBusy(false);
       }
+    }
+
+    function showSuccessModal() {
+      clearTimeout(successModalTimer);
+      successModal.classList.remove('hidden');
+      successModalTimer = setTimeout(hideSuccessModal, 2500);
+    }
+
+    function hideSuccessModal() {
+      clearTimeout(successModalTimer);
+      successModal.classList.add('hidden');
     }
 
     function collectRequests() {
