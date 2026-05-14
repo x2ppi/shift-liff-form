@@ -40,8 +40,7 @@
       line-height: 1.3;
     }
 
-    .panel,
-    .day-card {
+    .panel {
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -113,35 +112,159 @@
       flex: 1;
     }
 
-    .days {
+    .calendar-shell {
+      padding-bottom: 12px;
+    }
+
+    .weekday-row,
+    .month-grid {
       display: grid;
-      gap: 10px;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
     }
 
-    .day-card {
-      padding: 12px;
-    }
-
-    .day-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 10px;
+    .weekday-row {
+      margin-top: 14px;
+      padding: 0 2px 6px;
+      color: var(--muted);
+      font-size: 13px;
       font-weight: 800;
+      text-align: center;
     }
 
-    .day-head.sat {
-      color: var(--sat);
-    }
-
-    .day-head.sun {
+    .weekday-row span:first-child {
       color: var(--sun);
     }
 
-    .day-controls {
-      display: grid;
+    .weekday-row span:last-child {
+      color: var(--sat);
+    }
+
+    .month-grid {
+      gap: 4px;
+    }
+
+    .calendar-day,
+    .calendar-blank {
+      min-width: 0;
+      min-height: 76px;
+      border-radius: 6px;
+    }
+
+    .calendar-day {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      width: 100%;
+      margin: 0;
+      border: 1px solid #e2e6ec;
+      padding: 6px 4px;
+      background: #fff;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .calendar-day.selected {
+      border-color: var(--line);
+      box-shadow: 0 0 0 2px rgba(6, 199, 85, 0.16);
+    }
+
+    .calendar-day.has-value {
+      background: #f8fffb;
+    }
+
+    .calendar-day.invalid {
+      border-color: #d93025;
+      background: #fff7f6;
+    }
+
+    .date-number {
+      display: block;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+      text-align: center;
+    }
+
+    .date-number.sun {
+      color: var(--sun);
+    }
+
+    .date-number.sat {
+      color: var(--sat);
+    }
+
+    .date-value {
+      display: block;
+      overflow: hidden;
+      margin-top: auto;
+      border-radius: 999px;
+      padding: 3px 4px;
+      background: #eef1f5;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.2;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .date-value.work {
+      background: #e8f5ee;
+      color: #0b7f3b;
+    }
+
+    .date-value.off {
+      background: #f2f3f5;
+      color: #4f565f;
+    }
+
+    .date-value.invalid {
+      background: #fce8e6;
+      color: #c5221f;
+    }
+
+    .calendar-blank {
+      background: transparent;
+    }
+
+    .edit-panel {
+      position: fixed;
+      inset: auto 0 0;
+      z-index: 20;
+      padding: 12px;
+      background: rgba(32, 33, 36, 0.18);
+    }
+
+    .edit-sheet {
+      max-width: 720px;
+      margin: 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 10px 10px 0 0;
+      padding: 14px;
+      background: #fff;
+      box-shadow: 0 -8px 26px rgba(60, 64, 67, 0.18);
+    }
+
+    .edit-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 10px;
+    }
+
+    .edit-title {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .close-button {
+      width: auto;
+      margin: 0;
+      padding: 8px 12px;
+      background: #eef1f5;
+      color: var(--text);
     }
 
     .time-row {
@@ -171,6 +294,33 @@
       white-space: nowrap;
     }
 
+    @media (max-width: 420px) {
+      main {
+        padding: 16px 10px 32px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .panel {
+        padding: 12px;
+      }
+
+      .calendar-day,
+      .calendar-blank {
+        min-height: 68px;
+      }
+
+      .date-number {
+        font-size: 13px;
+      }
+
+      .date-value {
+        font-size: 10px;
+      }
+    }
+
     iframe[name="submitFrame"] {
       display: none;
     }
@@ -191,16 +341,48 @@
       </div>
     </section>
 
-    <section id="formPanel" class="panel hidden">
+    <section id="formPanel" class="panel calendar-shell hidden">
       <div class="toolbar">
         <label for="targetMonth">対象月
           <input id="targetMonth" type="month">
         </label>
       </div>
-      <p class="small">土曜は青、日曜は赤で表示します。入力した日だけ保存されます。</p>
+      <div class="weekday-row" aria-hidden="true">
+        <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+      </div>
+      <section id="days" class="month-grid" aria-label="月間カレンダー"></section>
+      <p class="small">日付をタップして希望を入力します。土曜は青、日曜は赤で表示します。</p>
     </section>
 
-    <section id="days" class="days"></section>
+    <section id="editPanel" class="edit-panel hidden" aria-live="polite">
+      <div class="edit-sheet">
+        <div class="edit-head">
+          <div id="editTitle" class="edit-title">日付を選択</div>
+          <button id="closeEditButton" class="close-button" type="button">閉じる</button>
+        </div>
+        <label for="editType">希望
+          <select id="editType">
+            <option value="none">未入力</option>
+            <option value="work">出勤希望</option>
+            <option value="off">休み希望</option>
+          </select>
+        </label>
+        <div id="editTimeFields" class="hidden">
+          <div class="time-row">
+            <label for="editStart">開始
+              <select id="editStart"></select>
+            </label>
+            <label for="editEnd">退勤
+              <select id="editEnd"></select>
+            </label>
+          </div>
+          <label class="up-row" for="editUp">
+            <input id="editUp" type="checkbox">
+            <span>UPあり</span>
+          </label>
+        </div>
+      </div>
+    </section>
 
     <section id="submitPanel" class="panel hidden">
       <button id="submitButton" type="button">送信する</button>
@@ -220,7 +402,9 @@
     let lineDisplayName = '';
     let storeDisplayName = '';
     let requestSeq = 0;
+    let selectedDate = '';
     const pendingRequests = new Map();
+    const requestsByDate = new Map();
 
     const statusEl = document.getElementById('status');
     const registerPanel = document.getElementById('registerPanel');
@@ -229,11 +413,27 @@
     const submitPanel = document.getElementById('submitPanel');
     const messageEl = document.getElementById('message');
     const monthInput = document.getElementById('targetMonth');
+    const editPanel = document.getElementById('editPanel');
+    const editTitle = document.getElementById('editTitle');
+    const editType = document.getElementById('editType');
+    const editTimeFields = document.getElementById('editTimeFields');
+    const editStart = document.getElementById('editStart');
+    const editEnd = document.getElementById('editEnd');
+    const editUp = document.getElementById('editUp');
 
     document.getElementById('registerButton').addEventListener('click', registerStaff);
     document.getElementById('submitButton').addEventListener('click', submitRequests);
-    monthInput.addEventListener('change', renderCalendar);
+    document.getElementById('closeEditButton').addEventListener('click', closeEditPanel);
+    monthInput.addEventListener('change', handleMonthChange);
+    editType.addEventListener('change', applyEditPanelChange);
+    editStart.addEventListener('change', applyEditPanelChange);
+    editEnd.addEventListener('change', applyEditPanelChange);
+    editUp.addEventListener('change', applyEditPanelChange);
     window.addEventListener('message', handleBackendMessage);
+    fillHourOptions(editStart, 10, 23);
+    fillHourOptions(editEnd, 11, 24);
+    editStart.value = '10';
+    editEnd.value = '17';
 
     init();
 
@@ -305,6 +505,14 @@
       formPanel.classList.remove('hidden');
       submitPanel.classList.remove('hidden');
       monthInput.value = defaultMonth();
+      handleMonthChange();
+    }
+
+    function handleMonthChange() {
+      requestsByDate.clear();
+      selectedDate = '';
+      closeEditPanel();
+      messageEl.textContent = '';
       renderCalendar();
     }
 
@@ -314,53 +522,46 @@
       if (!month) return;
 
       const [year, monthNumber] = month.split('-').map(Number);
+      const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
       const lastDay = new Date(year, monthNumber, 0).getDate();
+
+      for (let i = 0; i < firstWeekday; i++) {
+        daysEl.appendChild(createBlankCell());
+      }
 
       for (let day = 1; day <= lastDay; day++) {
         const date = new Date(year, monthNumber - 1, day);
-        const weekday = WEEKDAYS[date.getDay()];
+        const weekdayIndex = date.getDay();
+        const weekday = WEEKDAYS[weekdayIndex];
         const dateValue = `${month}-${String(day).padStart(2, '0')}`;
-        daysEl.appendChild(createDayCard(day, weekday, dateValue, date.getDay()));
+        daysEl.appendChild(createCalendarDay(day, weekday, dateValue, weekdayIndex));
       }
-      updateAllDisplayValues();
+
+      const totalCells = firstWeekday + lastDay;
+      const trailingBlanks = (7 - (totalCells % 7)) % 7;
+      for (let i = 0; i < trailingBlanks; i++) {
+        daysEl.appendChild(createBlankCell());
+      }
     }
 
-    function createDayCard(day, weekday, dateValue, weekdayIndex) {
-      const card = document.createElement('article');
-      card.className = 'day-card';
-      card.dataset.date = dateValue;
-      card.dataset.weekday = weekday;
+    function createBlankCell() {
+      const blank = document.createElement('div');
+      blank.className = 'calendar-blank';
+      return blank;
+    }
 
-      const colorClass = weekdayIndex === 0 ? 'sun' : weekdayIndex === 6 ? 'sat' : '';
-      card.innerHTML = `
-        <div class="day-head ${colorClass}">
-          <span>${day}日（${weekday}）</span>
-          <span class="value" data-role="value">未入力</span>
-        </div>
-        <div class="day-controls">
-          <select data-role="type" aria-label="${day}日の種別">
-            <option value="none">未入力</option>
-            <option value="work">出勤希望</option>
-            <option value="off">休み希望</option>
-          </select>
-          <div class="time-row hidden" data-role="timeRow">
-            <select data-role="start" aria-label="${day}日の開始"></select>
-            <select data-role="end" aria-label="${day}日の退勤"></select>
-          </div>
-          <label class="up-row hidden" data-role="upRow">
-            <input type="checkbox" data-role="up">
-            <span>UPあり</span>
-          </label>
-        </div>
-      `;
-
-      fillHourOptions(card.querySelector('[data-role="start"]'), 10, 23);
-      fillHourOptions(card.querySelector('[data-role="end"]'), 11, 24);
-      card.querySelector('[data-role="start"]').value = '10';
-      card.querySelector('[data-role="end"]').value = '17';
-      card.addEventListener('change', () => updateCard(card));
-      updateCard(card);
-      return card;
+    function createCalendarDay(day, weekday, dateValue, weekdayIndex) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'calendar-day';
+      button.dataset.date = dateValue;
+      button.dataset.weekday = weekday;
+      button.dataset.day = String(day);
+      button.dataset.weekdayIndex = String(weekdayIndex);
+      button.setAttribute('aria-label', `${day}日（${weekday}）の希望を入力`);
+      button.addEventListener('click', () => openEditPanel(dateValue));
+      updateCalendarDay(button);
+      return button;
     }
 
     function fillHourOptions(select, from, to) {
@@ -372,32 +573,93 @@
       }
     }
 
-    function updateCard(card) {
-      const type = card.querySelector('[data-role="type"]').value;
-      const timeRow = card.querySelector('[data-role="timeRow"]');
-      const upRow = card.querySelector('[data-role="upRow"]');
-      const valueEl = card.querySelector('[data-role="value"]');
+    function openEditPanel(dateValue) {
+      selectedDate = dateValue;
+      const dayButton = daysEl.querySelector(`[data-date="${dateValue}"]`);
+      const current = requestsByDate.get(dateValue) || {
+        type: 'none',
+        start: '10',
+        end: '17',
+        up: false
+      };
 
-      timeRow.classList.toggle('hidden', type !== 'work');
-      upRow.classList.toggle('hidden', type !== 'work');
-      valueEl.textContent = buildDisplayValue(card);
+      editTitle.textContent = `${dayButton.dataset.day}日（${dayButton.dataset.weekday}）`;
+      editType.value = current.type;
+      editStart.value = current.start || '10';
+      editEnd.value = current.end || '17';
+      editUp.checked = Boolean(current.up);
+      editTimeFields.classList.toggle('hidden', current.type !== 'work');
+      editPanel.classList.remove('hidden');
+      renderCalendar();
     }
 
-    function updateAllDisplayValues() {
-      document.querySelectorAll('.day-card').forEach(updateCard);
+    function closeEditPanel() {
+      editPanel.classList.add('hidden');
+      if (selectedDate) {
+        selectedDate = '';
+        renderCalendar();
+      }
     }
 
-    function buildDisplayValue(card) {
-      const type = card.querySelector('[data-role="type"]').value;
-      if (type === 'none') return '未入力';
-      if (type === 'off') return '休み希望';
+    function applyEditPanelChange() {
+      if (!selectedDate) return;
 
-      const start = Number(card.querySelector('[data-role="start"]').value);
-      const end = Number(card.querySelector('[data-role="end"]').value);
-      const up = card.querySelector('[data-role="up"]').checked;
+      const dayButton = daysEl.querySelector(`[data-date="${selectedDate}"]`);
+      if (!dayButton) return;
 
-      if (end <= start) return '時間確認';
+      const type = editType.value;
+      editTimeFields.classList.toggle('hidden', type !== 'work');
+      if (type === 'none') {
+        requestsByDate.delete(selectedDate);
+      } else {
+        const start = type === 'work' ? editStart.value : '';
+        const end = type === 'work' ? editEnd.value : '';
+        const up = type === 'work' && editUp.checked;
+        requestsByDate.set(selectedDate, {
+          date: selectedDate,
+          weekday: dayButton.dataset.weekday,
+          type,
+          start,
+          end,
+          up,
+          displayValue: buildDisplayValue(type, start, end, up)
+        });
+      }
+      renderCalendar();
+    }
+
+    function updateCalendarDay(button) {
+      const request = requestsByDate.get(button.dataset.date);
+      const weekdayIndex = Number(button.dataset.weekdayIndex);
+      const dateClass = weekdayIndex === 0 ? 'sun' : weekdayIndex === 6 ? 'sat' : '';
+      const valueClass = request ? valueStatusClass(request) : '';
+      const valueText = request ? request.displayValue : '';
+
+      button.classList.toggle('selected', button.dataset.date === selectedDate);
+      button.classList.toggle('has-value', Boolean(request));
+      button.classList.toggle('invalid', Boolean(request && isInvalidRequest(request)));
+      button.innerHTML = `
+        <span class="date-number ${dateClass}">${button.dataset.day}</span>
+        <span class="date-value ${valueClass} ${request ? '' : 'hidden'}">${valueText}</span>
+      `;
+    }
+
+    function valueStatusClass(request) {
+      if (isInvalidRequest(request)) return 'invalid';
+      if (request.type === 'work') return 'work';
+      if (request.type === 'off') return 'off';
+      return '';
+    }
+
+    function buildDisplayValue(type, start, end, up) {
+      if (type === 'off') return '休み';
+      if (type !== 'work') return '';
+      if (Number(end) <= Number(start)) return '時間確認';
       return `${start}~${end}${up ? 'UP' : ''}`;
+    }
+
+    function isInvalidRequest(request) {
+      return request.type === 'work' && Number(request.end) <= Number(request.start);
     }
 
     async function submitRequests() {
@@ -411,7 +673,7 @@
         messageEl.textContent = '少なくとも1日分を入力してください。';
         return;
       }
-      if (requests.some(item => item.type === 'work' && Number(item.end) <= Number(item.start))) {
+      if (requests.some(isInvalidRequest)) {
         messageEl.textContent = '退勤は開始より後の時間を選んでください。';
         return;
       }
@@ -432,22 +694,9 @@
     }
 
     function collectRequests() {
-      return Array.from(document.querySelectorAll('.day-card')).map(card => {
-        const type = card.querySelector('[data-role="type"]').value;
-        if (type === 'none') return null;
-        const start = type === 'work' ? card.querySelector('[data-role="start"]').value : '';
-        const end = type === 'work' ? card.querySelector('[data-role="end"]').value : '';
-        const up = type === 'work' && card.querySelector('[data-role="up"]').checked;
-        return {
-          date: card.dataset.date,
-          weekday: card.dataset.weekday,
-          type,
-          start,
-          end,
-          up,
-          displayValue: type === 'off' ? '休み希望' : `${start}~${end}${up ? 'UP' : ''}`
-        };
-      }).filter(Boolean);
+      return Array.from(requestsByDate.values())
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(item => ({ ...item }));
     }
 
     function postBackend(fields) {
