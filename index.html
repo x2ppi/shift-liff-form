@@ -479,6 +479,7 @@
     let storeDisplayName = '';
     let requestSeq = 0;
     let selectedDate = '';
+    let isLoadingRequests = false;
     const pendingRequests = new Map();
     const requestsByDate = new Map();
 
@@ -591,11 +592,18 @@
       requestsByDate.clear();
       selectedDate = '';
       closeEditPanel();
+      isLoadingRequests = true;
+      document.getElementById('submitButton').disabled = true;
       messageEl.textContent = '保存済みデータを確認しています...';
       renderCalendar();
-      await loadSavedRequests();
-      messageEl.textContent = '';
-      renderCalendar();
+      try {
+        await loadSavedRequests();
+      } finally {
+        isLoadingRequests = false;
+        document.getElementById('submitButton').disabled = false;
+        messageEl.textContent = '';
+        renderCalendar();
+      }
     }
 
     async function loadSavedRequests() {
@@ -800,6 +808,11 @@
     }
 
     async function submitRequests() {
+      if (isLoadingRequests) {
+        messageEl.textContent = '保存済みデータを確認中です。少し待ってから送信してください。';
+        return;
+      }
+
       const targetMonth = monthInput.value;
       const requests = collectRequests();
       if (!targetMonth) {
