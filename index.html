@@ -508,8 +508,8 @@
     editEnd.addEventListener('change', applyEditPanelChange);
     editUp.addEventListener('change', applyEditPanelChange);
     window.addEventListener('message', handleBackendMessage);
-    fillHourOptions(editStart, 10, 23);
-    fillHourOptions(editEnd, 11, 24);
+    fillTimeOptions(editStart, 20, 47);
+    fillTimeOptions(editEnd, 22, 48);
     editStart.value = '10';
     editEnd.value = '17';
 
@@ -698,11 +698,12 @@
       return button;
     }
 
-    function fillHourOptions(select, from, to) {
-      for (let hour = from; hour <= to; hour++) {
+    function fillTimeOptions(select, fromHalf, toHalf) {
+      for (let half = fromHalf; half <= toHalf; half++) {
         const option = document.createElement('option');
-        option.value = String(hour);
-        option.textContent = String(hour);
+        const value = formatTimeValue(half);
+        option.value = value;
+        option.textContent = formatTimeLabel(value);
         select.appendChild(option);
       }
     }
@@ -799,12 +800,28 @@
     function buildDisplayValue(type, start, end, up) {
       if (type === 'off') return '休み';
       if (type !== 'work') return '';
-      if (Number(end) <= Number(start)) return '時間確認';
+      if (parseTimeValue(end) <= parseTimeValue(start)) return '時間確認';
       return `${start}~${end}${up ? 'UP' : ''}`;
     }
 
     function isInvalidRequest(request) {
-      return request.type === 'work' && Number(request.end) <= Number(request.start);
+      return request.type === 'work' && parseTimeValue(request.end) <= parseTimeValue(request.start);
+    }
+
+    function parseTimeValue(value) {
+      const parts = String(value || '').split(':');
+      const hour = Number(parts[0]);
+      const minute = parts[1] === '30' ? 30 : 0;
+      return hour * 60 + minute;
+    }
+
+    function formatTimeValue(half) {
+      const hour = Math.floor(half / 2);
+      return half % 2 === 0 ? String(hour) : `${hour}:30`;
+    }
+
+    function formatTimeLabel(value) {
+      return String(value).includes(':') ? value : `${value}:00`;
     }
 
     async function submitRequests() {
