@@ -263,9 +263,15 @@
           registerPanel.classList.remove('hidden');
         }
       } catch (error) {
-        statusEl.textContent = 'LINE情報を取得できませんでした。LIFF URLから開き直してください。';
-        messageEl.textContent = error.message || String(error);
+        showFatalError(error);
       }
+    }
+
+    function showFatalError(error) {
+      const message = error && error.message ? error.message : String(error);
+      statusEl.textContent = 'LINE情報の確認中に止まりました。下の詳細を確認してください。';
+      messageEl.textContent = `詳細: ${message}`;
+      submitPanel.classList.remove('hidden');
     }
 
     async function registerStaff() {
