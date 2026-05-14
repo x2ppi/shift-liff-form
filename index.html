@@ -216,6 +216,7 @@
     const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
     let idToken = '';
+    let lineUserId = '';
     let lineDisplayName = '';
     let storeDisplayName = '';
     let requestSeq = 0;
@@ -250,14 +251,15 @@
         statusEl.textContent = 'LINEプロフィールを取得しています...';
         idToken = liff.getIDToken();
         const profile = await liff.getProfile();
+        lineUserId = profile.userId || '';
         lineDisplayName = profile.displayName || '';
 
-        if (!idToken) {
-          throw new Error('LINE IDトークンを取得できませんでした。');
+        if (!lineUserId) {
+          throw new Error('LINEユーザーIDを取得できませんでした。');
         }
 
         statusEl.textContent = '登録情報を確認しています...';
-        const lookup = await postBackend({ action: 'lookup', idToken });
+        const lookup = await postBackend({ action: 'lookup' });
         if (lookup.registered) {
           storeDisplayName = lookup.storeName;
           showCalendar();
@@ -287,7 +289,7 @@
 
       setBusy(true, '登録中です...');
       try {
-        const result = await postBackend({ action: 'register', idToken, storeName });
+        const result = await postBackend({ action: 'register', storeName });
         storeDisplayName = result.storeName;
         registerPanel.classList.add('hidden');
         showCalendar();
@@ -418,7 +420,6 @@
       try {
         await postBackend({
           action: 'submit',
-          idToken,
           targetMonth,
           requestsJson: JSON.stringify(requests)
         });
@@ -459,7 +460,13 @@
         form.target = 'submitFrame';
         form.className = 'hidden';
 
-        Object.entries({ ...fields, requestId }).forEach(([name, value]) => {
+        Object.entries({
+          ...fields,
+          requestId,
+          lineUserId,
+          lineDisplayName,
+          idToken
+        }).forEach(([name, value]) => {
           const input = document.createElement('input');
           input.type = 'hidden';
           input.name = name;
