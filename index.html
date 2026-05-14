@@ -238,13 +238,16 @@
 
     async function init() {
       try {
-        await liff.init({ liffId: LIFF_ID });
+        statusEl.textContent = 'LIFFを初期化しています...';
+        await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
+        statusEl.textContent = 'LINEログイン状態を確認しています...';
         if (!liff.isLoggedIn()) {
           statusEl.textContent = 'LINEログインへ移動します...';
           liff.login();
           return;
         }
 
+        statusEl.textContent = 'LINEプロフィールを取得しています...';
         idToken = liff.getIDToken();
         const profile = await liff.getProfile();
         lineDisplayName = profile.displayName || '';
@@ -253,6 +256,7 @@
           throw new Error('LINE IDトークンを取得できませんでした。');
         }
 
+        statusEl.textContent = '登録情報を確認しています...';
         const lookup = await postBackend({ action: 'lookup', idToken });
         if (lookup.registered) {
           storeDisplayName = lookup.storeName;
