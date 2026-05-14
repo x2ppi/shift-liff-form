@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>シフト希望フォーム</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --line: #06c755;
+      --border: #d9dee5;
+      --text: #202124;
+      --muted: #5f6368;
+      --bg: #f6f7f9;
+      --sun: #c62828;
+      --sat: #1565c0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 18px 14px 40px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      line-height: 1.3;
+    }
+
+    .panel,
+    .day-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .panel {
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .status,
+    .message,
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      font-weight: 700;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      width: 100%;
+      margin-top: 6px;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    input,
+    select,
+    textarea {
+      border: 1px solid #c9cdd3;
+      padding: 10px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    button {
+      border: 0;
+      padding: 12px 14px;
+      background: var(--line);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #aeb4ba;
+      cursor: not-allowed;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .toolbar > label {
+      flex: 1;
+    }
+
+    .days {
+      display: grid;
+      gap: 10px;
+    }
+
+    .day-card {
+      padding: 12px;
+    }
+
+    .day-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-weight: 800;
+    }
+
+    .day-head.sat {
+      color: var(--sat);
+    }
+
+    .day-head.sun {
+      color: var(--sun);
+    }
+
+    .day-controls {
+      display: grid;
+      gap: 10px;
+    }
+
+    .time-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .up-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      font-weight: 700;
+    }
+
+    .up-row input {
+      width: 22px;
+      height: 22px;
+      margin: 0;
+    }
+
+    .value {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    iframe[name="submitFrame"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>シフト希望フォーム</h1>
+
+    <section class="panel">
+      <p id="status" class="status">LINE情報を確認中です...</p>
+
+      <div id="registerPanel" class="hidden">
+        <label for="storeName">初回登録名</label>
+        <input id="storeName" type="text" autocomplete="name" placeholder="例: 北川">
+        <p class="small">この名前は管理用です。後から管理者がスプレッドシートで変更できます。</p>
+        <button id="registerButton" type="button">登録する</button>
+      </div>
+    </section>
+
+    <section id="formPanel" class="panel hidden">
+      <div class="toolbar">
+        <label for="targetMonth">対象月
+          <input id="targetMonth" type="month">
+        </label>
+      </div>
+      <p class="small">土曜は青、日曜は赤で表示します。入力した日だけ保存されます。</p>
+    </section>
+
+    <section id="days" class="days"></section>
+
+    <section id="submitPanel" class="panel hidden">
+      <button id="submitButton" type="button">送信する</button>
+      <div id="message" class="message"></div>
+    </section>
+
+    <iframe name="submitFrame" title="送信用フレーム"></iframe>
+  </main>
+
+  <script>
+    const LIFF_ID = '2010088240-Yn2hGGRq';
+    const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyYhLBYCG7jCgJJCjQ2M_fqxmfjR1W64u1My7o7gDClhElzTudUpWngYt0P4TtWLry8yQ/exec';
+    const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+    let idToken = '';
+    let lineDisplayName = '';
+    let storeDisplayName = '';
+    let requestSeq = 0;
+    const pendingRequests = new Map();
+
+    const statusEl = document.getElementById('status');
+    const registerPanel = document.getElementById('registerPanel');
+    const formPanel = document.getElementById('formPanel');
+    const daysEl = document.getElementById('days');
+    const submitPanel = document.getElementById('submitPanel');
+    const messageEl = document.getElementById('message');
+    const monthInput = document.getElementById('targetMonth');
+
+    document.getElementById('registerButton').addEventListener('click', registerStaff);
+    document.getElementById('submitButton').addEventListener('click', submitRequests);
+    monthInput.addEventListener('change', renderCalendar);
+    window.addEventListener('message', handleBackendMessage);
+
+    init();
+
+    async function init() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          statusEl.textContent = 'LINEログインへ移動します...';
+          liff.login();
+          return;
+        }
+
+        idToken = liff.getIDToken();
+        const profile = await liff.getProfile();
+        lineDisplayName = profile.displayName || '';
+
+        if (!idToken) {
+          throw new Error('LINE IDトークンを取得できませんでした。');
+        }
+
+        const lookup = await postBackend({ action: 'lookup', idToken });
+        if (lookup.registered) {
+          storeDisplayName = lookup.storeName;
+          showCalendar();
+        } else {
+          statusEl.textContent = `${lineDisplayName} さんの初回登録が必要です。`;
+          document.getElementById('storeName').value = lineDisplayName;
+          registerPanel.classList.remove('hidden');
+        }
+      } catch (error) {
+        statusEl.textContent = 'LINE情報を取得できませんでした。LIFF URLから開き直してください。';
+        messageEl.textContent = error.message || String(error);
+      }
+    }
+
+    async function registerStaff() {
+      const storeName = document.getElementById('storeName').value.trim();
+      if (!storeName) {
+        messageEl.textContent = '初回登録名を入力してください。';
+        return;
+      }
+
+      setBusy(true, '登録中です...');
+      try {
+        const result = await postBackend({ action: 'register', idToken, storeName });
+        storeDisplayName = result.storeName;
+        registerPanel.classList.add('hidden');
+        showCalendar();
+      } catch (error) {
+        messageEl.textContent = error.message || String(error);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function showCalendar() {
+      statusEl.textContent = `${storeDisplayName} さんとして入力中です。`;
+      formPanel.classList.remove('hidden');
+      submitPanel.classList.remove('hidden');
+      monthInput.value = defaultMonth();
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const month = monthInput.value;
+      daysEl.innerHTML = '';
+      if (!month) return;
+
+      const [year, monthNumber] = month.split('-').map(Number);
+      const lastDay = new Date(year, monthNumber, 0).getDate();
+
+      for (let day = 1; day <= lastDay; day++) {
+        const date = new Date(year, monthNumber - 1, day);
+        const weekday = WEEKDAYS[date.getDay()];
+        const dateValue = `${month}-${String(day).padStart(2, '0')}`;
+        daysEl.appendChild(createDayCard(day, weekday, dateValue, date.getDay()));
+      }
+      updateAllDisplayValues();
+    }
+
+    function createDayCard(day, weekday, dateValue, weekdayIndex) {
+      const card = document.createElement('article');
+      card.className = 'day-card';
+      card.dataset.date = dateValue;
+      card.dataset.weekday = weekday;
+
+      const colorClass = weekdayIndex === 0 ? 'sun' : weekdayIndex === 6 ? 'sat' : '';
+      card.innerHTML = `
+        <div class="day-head ${colorClass}">
+          <span>${day}日（${weekday}）</span>
+          <span class="value" data-role="value">未入力</span>
+        </div>
+        <div class="day-controls">
+          <select data-role="type" aria-label="${day}日の種別">
+            <option value="none">未入力</option>
+            <option value="work">出勤希望</option>
+            <option value="off">休み希望</option>
+          </select>
+          <div class="time-row hidden" data-role="timeRow">
+            <select data-role="start" aria-label="${day}日の開始"></select>
+            <select data-role="end" aria-label="${day}日の退勤"></select>
+          </div>
+          <label class="up-row hidden" data-role="upRow">
+            <input type="checkbox" data-role="up">
+            <span>UPあり</span>
+          </label>
+        </div>
+      `;
+
+      fillHourOptions(card.querySelector('[data-role="start"]'), 10, 23);
+      fillHourOptions(card.querySelector('[data-role="end"]'), 11, 24);
+      card.querySelector('[data-role="start"]').value = '10';
+      card.querySelector('[data-role="end"]').value = '17';
+      card.addEventListener('change', () => updateCard(card));
+      updateCard(card);
+      return card;
+    }
+
+    function fillHourOptions(select, from, to) {
+      for (let hour = from; hour <= to; hour++) {
+        const option = document.createElement('option');
+        option.value = String(hour);
+        option.textContent = String(hour);
+        select.appendChild(option);
+      }
+    }
+
+    function updateCard(card) {
+      const type = card.querySelector('[data-role="type"]').value;
+      const timeRow = card.querySelector('[data-role="timeRow"]');
+      const upRow = card.querySelector('[data-role="upRow"]');
+      const valueEl = card.querySelector('[data-role="value"]');
+
+      timeRow.classList.toggle('hidden', type !== 'work');
+      upRow.classList.toggle('hidden', type !== 'work');
+      valueEl.textContent = buildDisplayValue(card);
+    }
+
+    function updateAllDisplayValues() {
+      document.querySelectorAll('.day-card').forEach(updateCard);
+    }
+
+    function buildDisplayValue(card) {
+      const type = card.querySelector('[data-role="type"]').value;
+      if (type === 'none') return '未入力';
+      if (type === 'off') return '休み希望';
+
+      const start = Number(card.querySelector('[data-role="start"]').value);
+      const end = Number(card.querySelector('[data-role="end"]').value);
+      const up = card.querySelector('[data-role="up"]').checked;
+
+      if (end <= start) return '時間確認';
+      return `${start}~${end}${up ? 'UP' : ''}`;
+    }
+
+    async function submitRequests() {
+      const targetMonth = monthInput.value;
+      const requests = collectRequests();
+      if (!targetMonth) {
+        messageEl.textContent = '対象月を選択してください。';
+        return;
+      }
+      if (requests.length === 0) {
+        messageEl.textContent = '少なくとも1日分を入力してください。';
+        return;
+      }
+      if (requests.some(item => item.type === 'work' && Number(item.end) <= Number(item.start))) {
+        messageEl.textContent = '退勤は開始より後の時間を選んでください。';
+        return;
+      }
+
+      setBusy(true, '送信中です...');
+      try {
+        await postBackend({
+          action: 'submit',
+          idToken,
+          targetMonth,
+          requestsJson: JSON.stringify(requests)
+        });
+        messageEl.textContent = '送信しました。';
+      } catch (error) {
+        messageEl.textContent = error.message || String(error);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function collectRequests() {
+      return Array.from(document.querySelectorAll('.day-card')).map(card => {
+        const type = card.querySelector('[data-role="type"]').value;
+        if (type === 'none') return null;
+        const start = type === 'work' ? card.querySelector('[data-role="start"]').value : '';
+        const end = type === 'work' ? card.querySelector('[data-role="end"]').value : '';
+        const up = type === 'work' && card.querySelector('[data-role="up"]').checked;
+        return {
+          date: card.dataset.date,
+          weekday: card.dataset.weekday,
+          type,
+          start,
+          end,
+          up,
+          displayValue: type === 'off' ? '休み希望' : `${start}~${end}${up ? 'UP' : ''}`
+        };
+      }).filter(Boolean);
+    }
+
+    function postBackend(fields) {
+      const requestId = `req_${Date.now()}_${++requestSeq}`;
+      return new Promise((resolve, reject) => {
+        pendingRequests.set(requestId, { resolve, reject });
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = BACKEND_URL;
+        form.target = 'submitFrame';
+        form.className = 'hidden';
+
+        Object.entries({ ...fields, requestId }).forEach(([name, value]) => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          input.value = value == null ? '' : String(value);
+          form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
+
+        setTimeout(() => {
+          if (pendingRequests.has(requestId)) {
+            pendingRequests.delete(requestId);
+            reject(new Error('サーバー応答がタイムアウトしました。'));
+          }
+        }, 20000);
+      });
+    }
+
+    function handleBackendMessage(event) {
+      if (!event.data || event.data.source !== 'shift-liff-form') return;
+      const pending = pendingRequests.get(event.data.requestId);
+      if (!pending) return;
+      pendingRequests.delete(event.data.requestId);
+      if (event.data.ok) {
+        pending.resolve(event.data);
+      } else {
+        pending.reject(new Error(event.data.error || '送信に失敗しました。'));
+      }
+    }
+
+    function setBusy(isBusy, text) {
+      document.getElementById('registerButton').disabled = isBusy;
+      document.getElementById('submitButton').disabled = isBusy;
+      if (text) messageEl.textContent = text;
+    }
+
+    function defaultMonth() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+  </script>
+</body>
+</html>
