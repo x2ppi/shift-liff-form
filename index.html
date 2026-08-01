@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -143,8 +143,7 @@
       gap: 3px;
     }
 
-    .calendar-day,
-    .calendar-blank {
+    .calendar-day {
       min-width: 0;
       min-height: clamp(58px, calc((100dvh - 252px) / 6), 92px);
       border-radius: 6px;
@@ -171,6 +170,19 @@
 
     .calendar-day.has-value {
       background: #f8fffb;
+    }
+
+    .calendar-day.outside-month {
+      background: #f4f6f8;
+      color: #6d7278;
+    }
+
+    .calendar-day.outside-month.has-value {
+      background: #f0f8f3;
+    }
+
+    .calendar-day.outside-month .date-number {
+      opacity: 0.72;
     }
 
     .calendar-day.invalid {
@@ -284,10 +296,6 @@
       font-weight: 800;
       line-height: 1;
       text-align: center;
-    }
-
-    .calendar-blank {
-      background: transparent;
     }
 
     .edit-panel {
@@ -439,8 +447,7 @@
         padding-bottom: 3px;
       }
 
-      .calendar-day,
-      .calendar-blank {
+      .calendar-day {
         min-height: clamp(56px, calc((100dvh - 214px) / 6), 88px);
       }
 
@@ -466,7 +473,7 @@
       }
     }
 
-    iframe[name="submitFrame"] {
+    .backend-frame {
       display: none;
     }
   </style>
@@ -534,7 +541,6 @@
       <div id="message" class="message"></div>
     </section>
 
-    <iframe name="submitFrame" title="送信用フレーム"></iframe>
   </main>
 
   <div id="successModal" class="success-modal hidden" role="dialog" aria-modal="true" aria-labelledby="successTitle">
@@ -555,8 +561,10 @@
     let lineDisplayName = '';
     let storeDisplayName = '';
     let requestSeq = 0;
+    let loadRequestSeq = 0;
     let selectedDate = '';
     let isLoadingRequests = false;
+    let hadEditableRequestsOnLoad = false;
     let successModalTimer = 0;
     const pendingRequests = new Map();
     const requestsByDate = new Map();
@@ -669,16 +677,19 @@
     }
 
     async function handleMonthChange() {
+      const loadRequestId = ++loadRequestSeq;
       requestsByDate.clear();
       selectedDate = '';
+      hadEditableRequestsOnLoad = false;
       closeEditPanel();
       isLoadingRequests = true;
       document.getElementById('submitButton').disabled = true;
       messageEl.textContent = '保存済みデータを確認しています...';
       renderCalendar();
       try {
-        await loadSavedRequests();
+        await loadSavedRequests(loadRequestId);
       } finally {
+        if (loadRequestId !== loadRequestSeq) return;
         isLoadingRequests = false;
         document.getElementById('submitButton').disabled = false;
         messageEl.textContent = '';
@@ -686,15 +697,19 @@
       }
     }
 
-    async function loadSavedRequests() {
+    async function loadSavedRequests(loadRequestId) {
       const targetMonth = monthInput.value;
       if (!targetMonth) return;
+      const range = getCalendarRange(targetMonth);
 
       try {
         const result = await postBackend({
           action: 'loadRequests',
-          targetMonth
+          targetMonth,
+          rangeStart: range.start,
+          rangeEnd: range.end
         });
+        if (loadRequestId !== loadRequestSeq) return;
 
         (result.requests || []).forEach(item => {
           const request = normalizeLoadedRequest(item);
@@ -702,7 +717,10 @@
             requestsByDate.set(request.date, request);
           }
         });
+        hadEditableRequestsOnLoad = Array.from(requestsByDate.values())
+          .some(item => !isDateLocked(item.date));
       } catch (error) {
+        if (loadRequestId !== loadRequestSeq) return;
         messageEl.textContent = error.message || String(error);
       }
     }
@@ -730,47 +748,35 @@
       daysEl.innerHTML = '';
       if (!month) return;
 
-      const [year, monthNumber] = month.split('-').map(Number);
-      const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
-      const lastDay = new Date(year, monthNumber, 0).getDate();
-
-      for (let i = 0; i < firstWeekday; i++) {
-        daysEl.appendChild(createBlankCell());
-      }
-
-      for (let day = 1; day <= lastDay; day++) {
-        const date = new Date(year, monthNumber - 1, day);
+      const range = getCalendarRange(month);
+      const current = parseDateValue(range.start);
+      const end = parseDateValue(range.end);
+      while (current <= end) {
+        const day = current.getDate();
+        const date = new Date(current);
         const weekdayIndex = date.getDay();
         const weekday = WEEKDAYS[weekdayIndex];
-        const dateValue = `${month}-${String(day).padStart(2, '0')}`;
-        daysEl.appendChild(createCalendarDay(day, weekday, dateValue, weekdayIndex));
-      }
-
-      const totalCells = firstWeekday + lastDay;
-      const trailingBlanks = (7 - (totalCells % 7)) % 7;
-      for (let i = 0; i < trailingBlanks; i++) {
-        daysEl.appendChild(createBlankCell());
+        const dateValue = formatDateValue(date);
+        const outsideMonth = dateValue.slice(0, 7) !== month;
+        daysEl.appendChild(createCalendarDay(day, weekday, dateValue, weekdayIndex, outsideMonth));
+        current.setDate(current.getDate() + 1);
       }
     }
 
-    function createBlankCell() {
-      const blank = document.createElement('div');
-      blank.className = 'calendar-blank';
-      return blank;
-    }
-
-    function createCalendarDay(day, weekday, dateValue, weekdayIndex) {
+    function createCalendarDay(day, weekday, dateValue, weekdayIndex, outsideMonth) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'calendar-day';
+      button.classList.toggle('outside-month', outsideMonth);
       button.dataset.date = dateValue;
       button.dataset.weekday = weekday;
       button.dataset.day = String(day);
+      button.dataset.month = String(Number(dateValue.slice(5, 7)));
       button.dataset.weekdayIndex = String(weekdayIndex);
-      button.setAttribute('aria-label', `${day}日（${weekday}）の希望を入力`);
+      button.setAttribute('aria-label', `${button.dataset.month}月${day}日（${weekday}）の希望を入力`);
       if (isDateLocked(dateValue)) {
         button.disabled = true;
-        button.setAttribute('aria-label', `${day}日（${weekday}）は締切済みです`);
+        button.setAttribute('aria-label', `${button.dataset.month}月${day}日（${weekday}）は締切済みです`);
       } else {
         button.addEventListener('click', () => openEditPanel(dateValue));
       }
@@ -798,7 +804,7 @@
         up: false
       };
 
-      editTitle.textContent = `${dayButton.dataset.day}日（${dayButton.dataset.weekday}）`;
+      editTitle.textContent = `${dayButton.dataset.month}月${dayButton.dataset.day}日（${dayButton.dataset.weekday}）`;
       editType.value = current.type;
       editStart.value = current.start || '10';
       editEnd.value = current.end || '17';
@@ -848,6 +854,9 @@
       const locked = isDateLocked(button.dataset.date);
       const weekdayIndex = Number(button.dataset.weekdayIndex);
       const dateClass = weekdayIndex === 0 ? 'sun' : weekdayIndex === 6 ? 'sat' : '';
+      const dateLabel = button.classList.contains('outside-month')
+        ? `${button.dataset.month}/${button.dataset.day}`
+        : button.dataset.day;
       const valueClass = request ? valueStatusClass(request) : '';
       const valueHtml = request ? buildCalendarValueHtml(request) : '';
 
@@ -856,7 +865,7 @@
       button.classList.toggle('locked', locked);
       button.classList.toggle('invalid', Boolean(request && isInvalidRequest(request)));
       button.innerHTML = `
-        <span class="date-number ${dateClass}">${button.dataset.day}</span>
+        <span class="date-number ${dateClass}">${dateLabel}</span>
         <span class="date-value ${valueClass} ${locked ? 'locked' : ''} ${request ? '' : 'hidden'}">${valueHtml}</span>
         <span class="date-lock ${locked ? '' : 'hidden'}">締切済</span>
       `;
@@ -923,7 +932,8 @@
         messageEl.textContent = '対象月を選択してください。';
         return;
       }
-      if (requests.length === 0) {
+      const range = getCalendarRange(targetMonth);
+      if (requests.length === 0 && !hadEditableRequestsOnLoad) {
         messageEl.textContent = '少なくとも1日分を入力してください。';
         return;
       }
@@ -937,8 +947,11 @@
         await postBackend({
           action: 'submit',
           targetMonth,
+          rangeStart: range.start,
+          rangeEnd: range.end,
           requestsJson: JSON.stringify(requests)
         });
+        hadEditableRequestsOnLoad = requests.length > 0;
         messageEl.textContent = '送信しました。';
         showSuccessModal();
       } catch (error) {
@@ -995,11 +1008,18 @@
     function postBackend(fields) {
       const requestId = `req_${Date.now()}_${++requestSeq}`;
       return new Promise((resolve, reject) => {
-        pendingRequests.set(requestId, { resolve, reject });
+        const frame = document.createElement('iframe');
+        frame.name = `submitFrame_${requestId}`;
+        frame.title = '送信用フレーム';
+        frame.className = 'backend-frame';
+        document.body.appendChild(frame);
+        const pending = { resolve, reject, frame, timeoutId: 0 };
+        pendingRequests.set(requestId, pending);
+
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = BACKEND_URL;
-        form.target = 'submitFrame';
+        form.target = frame.name;
         form.className = 'hidden';
 
         Object.entries({
@@ -1016,16 +1036,17 @@
           form.appendChild(input);
         });
 
-        document.body.appendChild(form);
-        form.submit();
-        form.remove();
-
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           if (pendingRequests.has(requestId)) {
-            pendingRequests.delete(requestId);
+            cleanupPendingRequest(requestId);
             reject(new Error('サーバー応答がタイムアウトしました。'));
           }
         }, 60000);
+        pending.timeoutId = timeoutId;
+
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
       });
     }
 
@@ -1033,12 +1054,21 @@
       if (!event.data || event.data.source !== 'shift-liff-form') return;
       const pending = pendingRequests.get(event.data.requestId);
       if (!pending) return;
-      pendingRequests.delete(event.data.requestId);
+      if (event.source !== pending.frame.contentWindow) return;
+      cleanupPendingRequest(event.data.requestId);
       if (event.data.ok) {
         pending.resolve(event.data);
       } else {
         pending.reject(new Error(event.data.error || '送信に失敗しました。'));
       }
+    }
+
+    function cleanupPendingRequest(requestId) {
+      const pending = pendingRequests.get(requestId);
+      if (!pending) return;
+      clearTimeout(pending.timeoutId);
+      pending.frame.remove();
+      pendingRequests.delete(requestId);
     }
 
     function setBusy(isBusy, text) {
@@ -1050,6 +1080,29 @@
     function defaultMonth() {
       const now = new Date();
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function getCalendarRange(month) {
+      const [year, monthNumber] = String(month || '').split('-').map(Number);
+      const first = new Date(year, monthNumber - 1, 1);
+      const last = new Date(year, monthNumber, 0);
+      const start = new Date(first);
+      const end = new Date(last);
+      start.setDate(first.getDate() - first.getDay());
+      end.setDate(last.getDate() + (6 - last.getDay()));
+      return {
+        start: formatDateValue(start),
+        end: formatDateValue(end)
+      };
+    }
+
+    function parseDateValue(value) {
+      const parts = String(value || '').split('-').map(Number);
+      return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
+    function formatDateValue(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
   </script>
 </body>
